@@ -14,7 +14,7 @@ Telegram bot for playing Mafia game with automatic game management and multiple 
 
 1. Clone repository:
 ```bash
-git clone https://github.com/maybewewillw/mafiabot.git
+git clone https://github.com/maybewewill/mafiabot.git
 cd mafiabot
 ```
 
