@@ -78,7 +78,12 @@ async def end_game(chat_id: int, winner: str, users: list):
     except:
         pass
     
-    winner_text = "🤵🏻 <b>Мафия победила!</b>" if winner == "mafia" else "👨🏼 <b>Мирные жители победили!</b>"
+    if winner == "suicide":
+        winner_text = "💀 <b>Самоубийца победил!</b>"
+    elif winner == "mafia":
+        winner_text = "🤵🏻 <b>Мафия победила!</b>"
+    else:
+        winner_text = "👨🏼 <b>Мирные жители победили!</b>"
     
     text = f" <b>Игра завершена!</b>\n\n{winner_text}\n\n"
     
@@ -184,6 +189,19 @@ async def switch_phase(chat_id: int):
         new_phase = "night"
         game.night += 1
         duration = NIGHT_TIME
+        
+        for user in users:
+            if user.is_alive:
+                await update_user(
+                    user.telegram_id,
+                    doctor_rescued=False,
+                    visitor_id=None,
+                    lover_affected=False,
+                    advocate_saved=False,
+                    homeless_visit=False,
+                    killer_id=None,
+                    kamikaze_target_id=None
+                )
         
         text = f"🌃 <b>Ночь {game.night} наступила!</b>\nГород засыпает, просыпается мафия..."
         await bot.send_animation(chat_id, NIGHT_GIF, caption=text)
@@ -375,6 +393,21 @@ async def switch_phase(chat_id: int):
                         )
                         continue
                     
+                    if user.role == "happy":
+                        killer_role_type = get_role_type(killer.role) if killer and killer.role else None
+                        if killer_role_type == "mafia" or killer.role == "don":
+                            import random
+                            if random.random() < 0.5:
+                                await bot.send_message(
+                                    user.telegram_id,
+                                    "🎉 Тебе повезло! Ты выжил после визита мафии!"
+                                )
+                                await bot.send_message(
+                                    game.chat_id,
+                                    f"🎉 Кто-то каким-то чудом выжил после визита мафии!"
+                                )
+                                continue
+                    
                     if user.role == "don":
                         dead_don = user
                     elif user.role == "sheriff":
@@ -526,6 +559,58 @@ async def auto_lynch(chat_id: int, target_id: int):
         target_user = await get_user(target_id)
         if target_user and target_user.is_alive:
             role_full_name = get_role_full_name(target_user.role) if target_user.role else "Неизвестная роль"
+            
+            if target_user.role == "suicide":
+                await end_game(chat_id, "suicide", await get_users(chat_id))
+                return
+            
+            if target_user.role == "kamikaze":
+                users = await get_users(chat_id)
+                alive_users = [u for u in users if u.is_alive and u.telegram_id != target_id]
+                
+                if alive_users:
+                    from aiogram.utils.keyboard import InlineKeyboardBuilder
+                    from aiogram.types import InlineKeyboardButton
+                    builder = InlineKeyboardBuilder()
+                    for alive_user in alive_users:
+                        builder.add(
+                            InlineKeyboardButton(
+                                text=alive_user.first_name,
+                                callback_data=f"kamikaze_choose_{alive_user.telegram_id}_{target_id}",
+                            )
+                        )
+                    builder.adjust(1)
+                    await bot.send_message(
+                        target_user.telegram_id,
+                        "💥 Тебя линчуют! Выбери кого забрать с собой в могилу:",
+                        reply_markup=builder.as_markup()
+                    )
+                    await bot.send_message(
+                        chat_id,
+                        f"💀 <b>{target_name}</b> был <b>{role_full_name}</b>\n💥 Камикадзе выбирает кого забрать с собой..."
+                    )
+                    await update_game(chat_id, voting_confirmed=True)
+                    await clear_votes_for_day(chat_id, game.day)
+                    await clear_lynch_confirmations(chat_id, target_id)
+                    await update_game(chat_id, current_phase="day", voting_target_id=None)
+                    return
+                else:
+                    target_user.is_alive = False
+                    await update_user(target_id, is_alive=False, last_message_sent=False)
+                    await reset_user_game_state(target_id)
+                    await remove_user_from_game(chat_id, target_id)
+                    await update_game(chat_id, voting_confirmed=True)
+                    await bot.send_message(
+                        chat_id,
+                        f"💀 <b>{target_name}</b> был <b>{role_full_name}</b>"
+                    )
+                    await clear_votes_for_day(chat_id, game.day)
+                    await clear_lynch_confirmations(chat_id, target_id)
+                    await update_game(chat_id, current_phase="day", voting_target_id=None, voting_confirmed=False)
+                    if not await check_win_conditions(chat_id):
+                        await switch_phase(chat_id)
+                    return
+            
             target_user.is_alive = False
             await update_user(target_id, is_alive=False, last_message_sent=False)
             await reset_user_game_state(target_id)

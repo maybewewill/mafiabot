@@ -4,7 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 import time
 from database import *
-from utils.func import get_role_by_id, get_role_type
+from utils.func import get_role_by_id, get_role_full_name, get_role_type
 from filters.mafia import MafiaChatFilter
 from filters.dead import DeadLastMessageFilter
 
@@ -290,11 +290,11 @@ async def choose_user(callback: CallbackQuery):
         await update_user(target_id, homeless_visit=True)
         await callback.bot.send_message(game.chat_id, "🧙🏼‍♂️ <b>Бомж</b> пошёл к кому-то за бутылкой...")
         target_user = await get_user(target_id)
-        if target_user and target_user.visitor_id:
+        if target_user and target_user.killer_id:
             _name = await get_name_by_id(target_id)
-            _visitor_name = await get_name_by_id(target_user.visitor_id)
+            _killer_name = await get_name_by_id(target_user.killer_id)
             homeless_user = await get_user(callback.from_user.id)
-            await callback.bot.send_message(homeless_user.telegram_id, f"Ты увидел {_visitor_name} когда ходил за бутылкой к {_name}.")
+            await callback.bot.send_message(homeless_user.telegram_id, f"Ты увидел {_killer_name} когда ходил за бутылкой к {_name}.")
                 
 @router.callback_query(F.data.startswith("vote_for_"))
 async def vote_for_player(callback: CallbackQuery):
@@ -426,6 +426,60 @@ async def confirm_lynch(callback: CallbackQuery):
         pass
     
     await callback.answer(f"✅ Вы подтвердили линчевание (👍 {len(likes)} / 👎 {len(dislikes)})", show_alert=False)
+
+@router.callback_query(F.data.startswith("kamikaze_choose_"))
+async def kamikaze_choose_target(callback: CallbackQuery):
+    parts = callback.data.split("_")
+    if len(parts) >= 4:
+        target_id = int(parts[-2])
+        kamikaze_id = int(parts[-1])
+        
+        if callback.from_user.id != kamikaze_id:
+            await callback.answer("Это не ваш выбор!", show_alert=True)
+            return
+        
+        user = await get_user(callback.from_user.id)
+        if not user or not user.game:
+            await callback.answer("Ошибка!", show_alert=True)
+            return
+        
+        game = user.game
+        target_user = await get_user(target_id)
+        kamikaze_user = await get_user(kamikaze_id)
+        
+        if not target_user or not target_user.is_alive:
+            await callback.answer("Этот игрок уже мертв!", show_alert=True)
+            return
+        
+        if not kamikaze_user or not kamikaze_user.is_alive:
+            await callback.answer("Вы уже мертвы!", show_alert=True)
+            return
+        
+        target_name = await get_name_by_id(target_id)
+        kamikaze_name = await get_name_by_id(kamikaze_id)
+        target_role_name = get_role_full_name(target_user.role) if target_user.role else "Неизвестная роль"
+        kamikaze_role_name = get_role_full_name(kamikaze_user.role) if kamikaze_user.role else "Неизвестная роль"
+        
+        target_user.is_alive = False
+        await update_user(target_id, is_alive=False, last_message_sent=False)
+        await reset_user_game_state(target_id)
+        await remove_user_from_game(game.chat_id, target_id)
+        
+        kamikaze_user.is_alive = False
+        await update_user(kamikaze_id, is_alive=False, last_message_sent=False)
+        await reset_user_game_state(kamikaze_id)
+        await remove_user_from_game(game.chat_id, kamikaze_id)
+        
+        await callback.bot.send_message(
+            game.chat_id,
+            f"💥 <b>{kamikaze_name}</b> ({kamikaze_role_name}) забрал с собой <b>{target_name}</b> ({target_role_name})!"
+        )
+        
+        await callback.message.edit_text("✅ Вы выбрали цель!")
+        
+        from utils.update import check_win_conditions, switch_phase
+        if not await check_win_conditions(game.chat_id):
+            await switch_phase(game.chat_id)
 
 @router.callback_query(F.data.startswith("reject_lynch_"))
 async def reject_lynch(callback: CallbackQuery):

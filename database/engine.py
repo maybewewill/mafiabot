@@ -59,6 +59,7 @@ async def reset_user_game_state(telegram_id: int):
         user.lover_affected = False
         user.advocate_saved = False
         user.homeless_visit = False
+        user.kamikaze_target_id = None
         session.commit()
 
 async def remove_user_from_game(chat_id: int, telegram_id: int):
@@ -74,6 +75,7 @@ async def remove_user_from_game(chat_id: int, telegram_id: int):
         user.lover_affected = False
         user.advocate_saved = False
         user.homeless_visit = False
+        user.kamikaze_target_id = None
         session.commit()
 
 async def get_all_games():

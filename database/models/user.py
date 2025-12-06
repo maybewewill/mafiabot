@@ -38,6 +38,11 @@ class User(Base):
     last_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
     telegram_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
     last_message_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    kamikaze_target_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=True,
+    )
 
     game: Mapped["Game | None"] = relationship(
         "Game",
